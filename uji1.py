@@ -2,6 +2,7 @@ import base64
 from io import BytesIO
 import numpy as np
 from flask import Flask, render_template, request, redirect, url_for
+from sklearn.metrics import precision_score, recall_score, accuracy_score, f1_score, confusion_matrix
 import pandas as pd
 import csv
 import numpy as np
@@ -71,7 +72,7 @@ class HypertensionDiagnosis1:
 
   def run_diagnosis(self):
       # Load data from datatest.csv
-      test_data = np.genfromtxt('rand_data_set.csv', delimiter=',', dtype=str, skip_header=1)
+      test_data = np.genfromtxt('data_set_20.csv', delimiter=',', dtype=str, skip_header=1)
 
       correct_predictions = 0
       total_samples = len(test_data)
@@ -118,7 +119,24 @@ class HypertensionDiagnosis1:
       # Create a DataFrame for the confusion matrix
       confusion_matrix_df = pd.crosstab(pd.Series(actual_labels, name='Actual'),
                                         pd.Series(predicted_labels, name='Predicted'))
+    # Calculate additional evaluation metrics
+      true_positive = confusion_matrix_df.loc['hypertension', 'hypertension']
+      true_negative = confusion_matrix_df.loc['Normal', 'Normal']
+      false_positive = confusion_matrix_df.loc['Normal', 'hypertension']
+      false_negative = confusion_matrix_df.loc['hypertension', 'Normal']
 
+# Calculate metrics
+      #accuracy2 = accuracy_score(actual_labels, predicted_labels)
+      precision = precision_score(actual_labels, predicted_labels, pos_label='hypertension')
+      recall = recall_score(actual_labels, predicted_labels, pos_label='hypertension')
+      specificity = true_negative / (true_negative + false_positive)
+      f1 = f1_score(actual_labels, predicted_labels, pos_label='hypertension')
+      print("\nAdditional Evaluation Metrics:")
+      print("Accuracy: {:.2f}%".format(accuracy))
+      print("Precision (Positive Predictive Value): {:.2f}".format(precision))
+      print("Recall (Sensitivity or True Positive Rate): {:.2f}".format(recall))
+      print("Specificity (True Negative Rate): {:.2f}".format(specificity))
+      print("F1 Score: {:.2f}".format(f1))
       # Plot the confusion matrix as a heatmap
       plt.figure(figsize=(8, 6))
       sns.heatmap(confusion_matrix_df, annot=True, fmt='d', cmap='Blues', cbar=False)
@@ -134,7 +152,7 @@ class HypertensionDiagnosis1:
       confusion_matrix_image_base64 = base64.b64encode(confusion_matrix_image_buffer.read()).decode("utf-8")
       confusion_matrix_image_buffer.close()
 
-      return accuracy,confusion_matrix_image_base64 
+      return accuracy, confusion_matrix_image_base64, precision, recall, specificity, f1
       #,confusion_matrix_image_buffer 
 
 # Create an instance of the HypertensionDiagnosis class

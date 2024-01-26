@@ -20,7 +20,7 @@ from proses import Parse,Attr,Priory
 from proc import Parse as ParseFromProc, Attr as AttrFromProc, Priory as PrioryFromProc
 import json
 from werkzeug.serving import run_simple
-
+from sklearn.model_selection import train_test_split
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'  # Ganti dengan kunci rahasia Anda sendiri
 bcrypt = Bcrypt()
@@ -62,35 +62,53 @@ def home():
 def input_and_uji():
     diagnosis1 = HypertensionDiagnosis1()
     diagnosis2 = HypertensionDiagnosis2()
+    precision = None
+    recall = None
+    specificity = None
+    f1 = None
     if request.method == 'POST':
-        banyak = int(request.form['banyak'])
-
+        #banyak = int(request.form['banyak'])
+        
         # Baca file data_set.csv
-        data = pd.read_csv('data_set.csv')
-
-        # Random extract row dari file CSV
-        random_rows = data.sample(n=banyak)
-
-        # Menambahkan kolom 'No' di awal
-        random_rows.insert(0, 'No', range(1, 1 + len(random_rows)))
-
+        df = pd.read_csv('data_set.csv')
+        df = df.copy()
+        # Split dataset into 80% training and 20% testing
+        df.dropna(inplace=True)
+        df = df.applymap(lambda x: str(x).replace(',', '').replace('"', ''))
+        df = df.applymap(lambda x: float(x) if x.isdigit() else x)
+        data_set_80, data_set_20 = train_test_split(df, test_size=0.2, random_state=42)
+        data_set_80.to_csv('data_set.csv', index=False)
+        
+        data_set_20.insert(0, 'No', range(1, 1 + len(data_set_20)))
+        data_set_20.to_csv('data_set_20.csv', index=False)
         # Menyimpan hasil ke file CSV baru
-        random_rows.to_csv('rand_data_set.csv', index=False)
+        
 
-        print(f"{banyak} data telah diambil secara acak dan disimpan dalam file 'rand_data_set.csv'.")
+        #print(f"{banyak} data telah diambil secara acak dan disimpan dalam file 'rand_data_set.csv'.")
 
         # Setelah semua proses selesai, jalankan diagnosis
-        accuracy1, confusion_matrix_image_base641 = diagnosis1.run_diagnosis()
+        #accuracy1, confusion_matrix_image_base641 = diagnosis1.run_diagnosis()
+        accuracy1, confusion_matrix_image_base641, precision, recall, specificity, f1 = diagnosis1.run_diagnosis()
         accuracy2, confusion_matrix_image_base642 = diagnosis2.run_diagnosis()
+        df.copy().to_csv('data_set.csv', index=False)
+        total_samples = df.shape[0]
+        total_train = data_set_80.shape[0]
+        total_test = data_set_20.shape[0]
+
 
     else:
         accuracy1 = None
         accuracy2 = None
         confusion_matrix_image_base641 = None
         confusion_matrix_image_base642 = None
+        total_samples = None
+        total_train = None
+        total_test = None
 
-    return render_template('uji.html', accuracy1=accuracy1, confusion_matrix_image_base641=confusion_matrix_image_base641,
-                           accuracy2=accuracy2, confusion_matrix_image_base642=confusion_matrix_image_base642)
+    return render_template('uji.html',total_samples=total_samples, total_train=total_train, total_test=total_test, accuracy1=accuracy1, confusion_matrix_image_base641=confusion_matrix_image_base641,
+                       precision=precision, recall=recall, specificity=specificity, f1=f1,
+                       accuracy2=accuracy2, confusion_matrix_image_base642=confusion_matrix_image_base642)
+
 
 #data = np.genfromtxt('prior.csv', delimiter=',', dtype=str)
 def calculate_p_x_h(attribute):
@@ -363,9 +381,112 @@ def login():
         return "Login gagal. Coba lagi."
 
     return render_template('login.html')
-    
+ 
+# Membaca dataset dari file CSV
+dataset = pd.read_csv("data_set.csv")
+# Memisahkan kolom-kolom berdasarkan tipe data
+numerical_columns = dataset.select_dtypes(include=['int64', 'float64']).columns
+categorical_columns = dataset.select_dtypes(include=['object']).columns
+   
+def get_count_plot_html():
+    try:
+        plt.figure(figsize=(8, 6))
+        sns.countplot(x='Hypertension', data=dataset)
+        plt.title('Count Plot Hypertension')
+        plt.xlabel('Hypertension')
+        plt.ylabel('Count')
+
+        count_plot_html = plot_to_html()
+        plt.close()
+
+        return count_plot_html
+    except Exception as e:
+        print(f"Error during plot_to_html: {e}")
+        return None
+def get_histograms_html():
+    try:
+        histograms_html = []
+        for num_column in numerical_columns:
+            if num_column != 'Hypertension':
+                plt.figure(figsize=(8, 6))
+                sns.histplot(dataset[num_column], bins=20, kde=True)
+                plt.title(f'Distribusi {num_column}')
+                plt.xlabel(num_column)
+                plt.ylabel('Frekuensi')
+
+                histogram_html = plot_to_html()
+                histograms_html.append({'column': num_column, 'html': histogram_html})
+
+                plt.close()
+
+        return histograms_html
+    except Exception as e:
+        print(f"Error during plot_to_html: {e}")
+        return None
+
+def get_heatmap_html():
+    try:
+        plt.figure(figsize=(12, 10))
+        sns.heatmap(dataset.corr(), annot=True, cmap='coolwarm')
+        plt.title('Heatmap Korelasi Antar Atribut')
+
+        heatmap_html = plot_to_html()
+        plt.close()
+
+        return heatmap_html
+    except Exception as e:
+        print(f"Error during plot_to_html: {e}")
+        return None
+
+def get_pie_charts_html():
+    try:
+        pie_charts_html = []
+        for cat_column in categorical_columns:
+            if cat_column != 'Hypertension':
+                plt.figure(figsize=(6, 6))
+                dataset[cat_column].value_counts().plot.pie(autopct='%1.1f%%', labels=dataset[cat_column].unique())
+                plt.title(f'Proporsi {cat_column} berdasarkan Hypertension')
+
+                pie_chart_html = plot_to_html()
+                pie_charts_html.append({'column': cat_column, 'html': pie_chart_html})
+
+                plt.close()
+
+        return pie_charts_html
+    except Exception as e:
+        print(f"Error during plot_to_html: {e}")
+        return None
+
+def plot_to_html():
+    img = BytesIO()
+    plt.savefig(img, format='png')
+    img.seek(0)
+    plot_html = base64.b64encode(img.getvalue()).decode('utf8')
+    return plot_html
+@app.route('/chart')    
+def chart():
+    # Count Plot untuk Kolom Hypertension
+    count_plot_html = get_count_plot_html()
+
+    # Histogram untuk Kolom Numerik
+    histograms_html = get_histograms_html()
+
+    # Heatmap untuk Korelasi Antar Atribut
+    heatmap_html = get_heatmap_html()
+
+    # Pie Chart untuk Kolom Kategorikal
+    pie_charts_html = get_pie_charts_html()
+
+    # Render halaman HTML dengan grafik
+    return render_template('chart.html', count_plot_html=count_plot_html,
+                           histograms_html=histograms_html, heatmap_html=heatmap_html,
+                           pie_charts_html=pie_charts_html)
+
 @app.route('/admin_fuc')
 def admin_fuc():
+
+
+    # Render halaman HTML dengan grafik
     return render_template('admin_fuc.html')
     
 @app.route('/back')
